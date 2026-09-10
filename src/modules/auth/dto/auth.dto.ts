@@ -29,3 +29,15 @@ export class LoginDto {
   @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
   password: string
 }
+
+export class ChangePasswordDto {
+  @ApiProperty({ example: '123456', description: 'Mật khẩu hiện tại' })
+  @IsString()
+  @IsNotEmpty({ message: 'Mật khẩu cũ không được để trống' })
+  oldPassword: string
+
+  @ApiProperty({ example: 'NewPass123!', description: 'Mật khẩu mới (tối thiểu 6 ký tự)' })
+  @IsString()
+  @MinLength(6, { message: 'Mật khẩu mới phải từ 6 ký tự trở lên' })
+  newPassword: string
+}

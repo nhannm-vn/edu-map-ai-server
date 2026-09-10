@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common'
-import { RegisterDto, LoginDto } from './dto/auth.dto'
+import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto'
 import * as bcrypt from 'bcrypt'
 import { JwtService } from '@nestjs/jwt'
 import { PrismaService } from 'prisma/prisma.service'
@@ -10,6 +10,10 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
   ) {}
+
+  private generateToken(userId: string, email: string): string {
+    return this.jwtService.sign({ sub: userId, email })
+  }
 
   async register(dto: RegisterDto) {
     const existingUser = await this.prisma.user.findUnique({
@@ -69,7 +73,27 @@ export class AuthService {
     }
   }
 
-  private generateToken(userId: string, email: string): string {
-    return this.jwtService.sign({ sub: userId, email })
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    })
+
+    if (!user) {
+      throw new UnauthorizedException('Tài khoản không tồn tại')
+    }
+
+    const isPasswordValid = await bcrypt.compare(dto.oldPassword, user.passwordHash)
+    if (!isPasswordValid) {
+      throw new BadRequestException('Mật khẩu hiện tại không chính xác')
+    }
+
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 10)
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newPasswordHash },
+    })
+
+    return { message: 'Đổi mật khẩu thành công' }
   }
 }

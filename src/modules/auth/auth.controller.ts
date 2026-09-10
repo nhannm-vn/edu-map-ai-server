@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Post, Request, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Patch, Post, Request, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
-import { RegisterDto, LoginDto } from './dto/auth.dto'
+import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 
 export interface AuthenticatedUser {
@@ -38,5 +38,13 @@ export class AuthController {
   @ApiOperation({ summary: 'Lấy thông tin tài khoản đang đăng nhập' })
   getProfile(@Request() req: RequestWithUser): AuthenticatedUser {
     return req.user
+  }
+
+  @Patch('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đổi mật khẩu tài khoản' })
+  changePassword(@Request() req: RequestWithUser, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(req.user.id, dto)
   }
 }
