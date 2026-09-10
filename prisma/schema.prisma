@@ -1,0 +1,264 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String   @id @default(uuid()) @db.Uuid
+  email            String   @unique
+  passwordHash     String
+  fullName         String
+  universityName   String?
+  currentYear      Int?
+  githubUsername   String?
+  subscriptionTier String   @default("FREE")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  userSkills         UserSkill[]
+  skillTree          SkillTree?
+  academicTranscript AcademicTranscript?
+  githubProfile      GithubProfile?
+  portfolio          Portfolio?
+  aiAnalyses         AiAnalysis[]
+  recommendations    Recommendation[]
+
+  @@index([email])
+  @@index([githubUsername])
+  @@map("users")
+}
+
+model Skill {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @unique
+  category        String
+  difficultyLevel Int      @default(1)
+  demandScore     Float    @default(0)
+  createdAt       DateTime @default(now())
+
+  userSkills      UserSkill[]
+  skillTreeNodes  SkillTreeNode[]
+  recommendations Recommendation[]
+  jobMarketTrends JobMarketTrend[]
+  skillResources  SkillResource[]
+
+  @@index([category])
+  @@index([demandScore])
+  @@map("skills")
+}
+
+model UserSkill {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  skillId          String   @db.Uuid
+  proficiencyLevel Int      @default(1)
+  hoursSpent       Int      @default(0)
+  verifiedByGithub Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+  @@index([userId])
+  @@map("userSkills")
+}
+
+model SkillTree {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @unique @db.Uuid
+  careerPath           String
+  completionPercentage Float     @default(0)
+  lastAnalyzedAt       DateTime?
+  createdAt            DateTime  @default(now())
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes SkillTreeNode[]
+
+  @@index([userId])
+  @@index([completionPercentage])
+  @@map("skillTrees")
+}
+
+model SkillTreeNode {
+  id           String    @id @default(uuid()) @db.Uuid
+  skillTreeId  String    @db.Uuid
+  skillId      String    @db.Uuid
+  nodeLevel    Int
+  isVisible    Boolean   @default(true)
+  isCompleted  Boolean   @default(false)
+  priorityRank Int?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  skillTree SkillTree @relation(fields: [skillTreeId], references: [id], onDelete: Cascade)
+  skill     Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillTreeId, skillId])
+  @@index([skillTreeId])
+  @@index([priorityRank])
+  @@map("skillTreeNodes")
+}
+
+model AcademicTranscript {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @db.Uuid
+  documentUrl     String
+  gpa             Float?
+  parsedCourses   Json?
+  skillExtraction Json?
+  isVerified      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("academicTranscripts")
+}
+
+model GithubProfile {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @db.Uuid
+  githubUsername  String    @unique
+  profileUrl      String
+  accessToken     String?
+  extractedSkills Json?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repositories GithubRepository[]
+
+  @@index([userId])
+  @@index([githubUsername])
+  @@map("githubProfiles")
+}
+
+model GithubRepository {
+  id              String   @id @default(uuid()) @db.Uuid
+  githubProfileId String   @db.Uuid
+  repoName        String
+  repoUrl         String
+  languages       Json?
+  mainLanguage    String?
+  extractedSkills Json?
+  createdAt       DateTime @default(now())
+
+  githubProfile GithubProfile @relation(fields: [githubProfileId], references: [id], onDelete: Cascade)
+
+  @@index([githubProfileId])
+  @@map("githubRepositories")
+}
+
+model Portfolio {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid
+  portfolioUrl  String?  @unique
+  portfolioSlug String?  @unique
+  isPublic      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([portfolioSlug])
+  @@map("portfolios")
+}
+
+model AiAnalysis {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  analysisType       String
+  inputData          Json?
+  aiResponse         Json?
+  skillGapIdentified Json?
+  recommendedPath    String?  @db.Text
+  confidenceScore    Float?
+  modelUsed          String?
+  tokensUsed         Int?
+  createdAt          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([analysisType])
+  @@index([createdAt])
+  @@map("aiAnalyses")
+}
+
+model Recommendation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @db.Uuid
+  skillId            String    @db.Uuid
+  recommendationType String?
+  priorityScore      Float?
+  reason             String?   @db.Text
+  resourceUrls       Json?
+  userClicked        Boolean   @default(false)
+  userDismissed      Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id])
+
+  @@index([userId])
+  @@index([priorityScore])
+  @@map("recommendations")
+}
+
+model JobMarketTrend {
+  id               String    @id @default(uuid()) @db.Uuid
+  skillId          String    @db.Uuid
+  period           String?
+  jobListingsCount Int?
+  salaryRangeMin   Int?
+  salaryRangeMax   Int?
+  trendPercentage  Float?
+  dataFetchedAt    DateTime?
+  createdAt        DateTime  @default(now())
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@index([skillId])
+  @@index([period])
+  @@map("jobMarketTrends")
+}
+
+model Affiliate {
+  id             String   @id @default(uuid()) @db.Uuid
+  partnerName    String   @unique
+  affiliateUrl   String?
+  commissionRate Float    @default(5)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  skillResources SkillResource[]
+
+  @@index([partnerName])
+  @@map("affiliates")
+}
+
+model SkillResource {
+  id            String   @id @default(uuid()) @db.Uuid
+  skillId       String   @db.Uuid
+  affiliateId   String?  @db.Uuid
+  resourceType  String?
+  title         String
+  url           String
+  cost          Float    @default(0)
+  rating        Float?
+  durationHours Int?
+  createdAt     DateTime @default(now())
+
+  skill     Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  affiliate Affiliate? @relation(fields: [affiliateId], references: [id])
+
+  @@index([skillId])
+  @@index([resourceType])
+  @@map("skillResources")
+}
