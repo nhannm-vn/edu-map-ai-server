@@ -1,3 +1,4 @@
+import 'dotenv/config' // Nạp biến môi trường từ .env
 import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
