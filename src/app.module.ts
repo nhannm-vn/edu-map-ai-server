@@ -1,3 +1,4 @@
+import { SkillsModule } from './modules/skills/dto/skills.module'
 import { Module } from '@nestjs/common'
 import { AuthModule } from './modules/auth/auth.module'
 import { PrismaModule } from 'prisma/prisma.module'
@@ -6,7 +7,7 @@ import { AppService } from './app.service'
 import { UsersModule } from './modules/users/users.module'
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule],
+  imports: [SkillsModule, PrismaModule, AuthModule, UsersModule],
   controllers: [AppController],
   providers: [AppService],
 })
