@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common'
 import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto'
 import * as bcrypt from 'bcrypt'
@@ -60,16 +62,18 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác')
     }
 
-    const accessToken = this.generateToken(user.id, user.email)
+    // Đưa role vào JWT Payload
+    const payload = { sub: user.id, email: user.email, role: user.role }
+    const accessToken = await this.jwtService.signAsync(payload)
 
     return {
+      accessToken,
       user: {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
-        subscriptionTier: user.subscriptionTier,
+        role: user.role, // Trả về ROLE cho Frontend kiểm tra
       },
-      accessToken,
     }
   }
 
