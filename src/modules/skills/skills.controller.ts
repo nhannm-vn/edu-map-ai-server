@@ -8,6 +8,7 @@ import { CreateSkillDto } from './dto/create-skill.dto'
 import { AddUserSkillDto } from './dto/add-user-skill.dto'
 import { UpdateSkillDto } from './dto/update-skill.dto'
 import * as authController from '../auth/auth.controller'
+import { UpdateUserSkillDto } from './dto/update-user-skill.dto'
 
 @ApiTags('Skills')
 @Controller('skills')
@@ -46,6 +47,26 @@ export class SkillsController {
   @ApiOperation({ summary: '[ADMIN] Xóa kỹ năng khỏi hệ thống' })
   deleteSkill(@Param('id') id: string) {
     return this.skillsService.deleteSkill(id)
+  }
+
+  @Patch('my-skills/:skillId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[STUDENT] Cập nhật trình độ hoặc số giờ học của kỹ năng cá nhân' })
+  updateUserSkill(
+    @Request() req: authController.RequestWithUser,
+    @Param('skillId') skillId: string,
+    @Body() dto: UpdateUserSkillDto,
+  ) {
+    return this.skillsService.updateUserSkill(req.user.id, skillId, dto)
+  }
+
+  @Delete('my-skills/:skillId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '[STUDENT] Xóa một kỹ năng khỏi hồ sơ cá nhân' })
+  deleteUserSkill(@Request() req: authController.RequestWithUser, @Param('skillId') skillId: string) {
+    return this.skillsService.deleteUserSkill(req.user.id, skillId)
   }
 
   @Get('my-skills')

@@ -3,6 +3,7 @@ import { PrismaService } from 'prisma/prisma.service'
 import { CreateSkillDto } from './dto/create-skill.dto'
 import { AddUserSkillDto } from './dto/add-user-skill.dto'
 import { UpdateSkillDto } from './dto/update-skill.dto'
+import { UpdateUserSkillDto } from './dto/update-user-skill.dto'
 
 @Injectable()
 export class SkillsService {
@@ -60,6 +61,46 @@ export class SkillsService {
         hoursSpent: dto.hoursSpent ?? 0,
       },
       include: { skill: true },
+    })
+  }
+
+  // STUDENT: Cập nhật trình độ/giờ học của kỹ năng cá nhân
+  async updateUserSkill(userId: string, skillId: string, dto: UpdateUserSkillDto) {
+    const userSkill = await this.prisma.userSkill.findUnique({
+      where: {
+        userId_skillId: { userId, skillId },
+      },
+    })
+
+    if (!userSkill) {
+      throw new NotFoundException('Bạn chưa khai báo kỹ năng này')
+    }
+
+    return this.prisma.userSkill.update({
+      where: {
+        userId_skillId: { userId, skillId },
+      },
+      data: dto,
+      include: { skill: true },
+    })
+  }
+
+  // STUDENT: Xóa kỹ năng khỏi hồ sơ cá nhân
+  async deleteUserSkill(userId: string, skillId: string) {
+    const userSkill = await this.prisma.userSkill.findUnique({
+      where: {
+        userId_skillId: { userId, skillId },
+      },
+    })
+
+    if (!userSkill) {
+      throw new NotFoundException('Không tìm thấy kỹ năng này trong hồ sơ của bạn')
+    }
+
+    return this.prisma.userSkill.delete({
+      where: {
+        userId_skillId: { userId, skillId },
+      },
     })
   }
 
