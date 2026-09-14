@@ -3,14 +3,17 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common'
 import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto'
 import * as bcrypt from 'bcrypt'
+import * as crypto from 'crypto'
 import { JwtService } from '@nestjs/jwt'
 import { PrismaService } from 'prisma/prisma.service'
+import { MailService } from '../mail/mail.service'
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
   ) {}
 
   private generateToken(userId: string, email: string): string {
@@ -99,5 +102,68 @@ export class AuthService {
     })
 
     return { message: 'Đổi mật khẩu thành công' }
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    })
+
+    if (!user) {
+      throw new NotFoundException('Email không tồn tại trong hệ thống')
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex')
+    const resetTokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000) // Hết hạn 15 phút
+
+    await this.prisma.user.update({
+      where: { email: dto.email },
+      data: {
+        resetToken,
+        resetTokenExpiresAt,
+      },
+    })
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000'
+    const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`
+
+    await this.mailService.sendResetPasswordEmail(dto.email, resetLink)
+
+    return {
+      message: 'Đã gửi đường dẫn khôi phục mật khẩu vào email của bạn',
+      debugLink: resetLink,
+      debugToken: resetToken,
+    }
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('Mật khẩu mới và xác nhận mật khẩu không khớp')
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { resetToken: dto.token },
+    })
+
+    if (!user) {
+      throw new BadRequestException('Token khôi phục không hợp lệ')
+    }
+
+    if (!user.resetTokenExpiresAt || new Date() > user.resetTokenExpiresAt) {
+      throw new BadRequestException('Đường dẫn khôi phục mật khẩu đã hết hạn')
+    }
+
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 10)
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: newPasswordHash,
+        resetToken: null,
+        resetTokenExpiresAt: null,
+      },
+    })
+
+    return { message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay bây giờ.' }
   }
 }
