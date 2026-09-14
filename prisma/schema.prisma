@@ -10,6 +10,7 @@ enum Role {
   STUDENT
   ADMIN
 }
+
 model User {
   id               String   @id @default(uuid()) @db.Uuid
   email            String   @unique
@@ -18,7 +19,7 @@ model User {
   universityName   String?
   currentYear      Int?
   githubUsername   String?
-  role             Role   @default(STUDENT)
+  role             Role     @default(STUDENT)
   subscriptionTier String   @default("FREE")
   resetToken          String?   @map("reset_token")
   resetTokenExpiresAt DateTime? @map("reset_token_expires_at")
