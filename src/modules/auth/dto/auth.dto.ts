@@ -41,3 +41,27 @@ export class ChangePasswordDto {
   @MinLength(6, { message: 'Mật khẩu mới phải từ 6 ký tự trở lên' })
   newPassword: string
 }
+
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'user@edumap.ai', description: 'Email nhận link đổi mật khẩu' })
+  @IsEmail({}, { message: 'Email không đúng định dạng' })
+  @IsNotEmpty({ message: 'Email không được để trống' })
+  email: string
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'token-hex-string', description: 'Token reset từ email' })
+  @IsString()
+  @IsNotEmpty({ message: 'Token không được để trống' })
+  token: string
+
+  @ApiProperty({ example: 'NewPass123!', description: 'Mật khẩu mới' })
+  @IsString()
+  @MinLength(6, { message: 'Mật khẩu mới phải từ 6 ký tự trở lên' })
+  newPassword: string
+
+  @ApiProperty({ example: 'NewPass123!', description: 'Xác nhận mật khẩu mới' })
+  @IsString()
+  @IsNotEmpty({ message: 'Xác nhận mật khẩu không được để trống' })
+  confirmPassword: string
+}

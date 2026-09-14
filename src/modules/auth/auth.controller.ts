@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Patch, Post, Request, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { AuthService } from './auth.service'
-import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto'
+import { RegisterDto, LoginDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto'
 import { JwtAuthGuard } from './guards/jwt-auth.guard'
 
 export interface AuthenticatedUser {
@@ -46,5 +46,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Đổi mật khẩu tài khoản' })
   changePassword(@Request() req: RequestWithUser, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(req.user.id, dto)
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Gửi link khôi phục mật khẩu về email' })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto)
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Xác thực token và đặt lại mật khẩu mới' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto)
   }
 }
