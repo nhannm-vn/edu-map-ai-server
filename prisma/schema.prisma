@@ -6,6 +6,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum Role {
+  STUDENT
+  ADMIN
+}
+
 model User {
   id               String   @id @default(uuid()) @db.Uuid
   email            String   @unique
@@ -14,6 +19,7 @@ model User {
   universityName   String?
   currentYear      Int?
   githubUsername   String?
+  role             Role     @default(STUDENT)
   subscriptionTier String   @default("FREE")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
