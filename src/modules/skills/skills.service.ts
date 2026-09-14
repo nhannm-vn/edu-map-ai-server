@@ -1,7 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from 'prisma/prisma.service'
-import { CreateSkillDto } from './create-skill.dto'
-import { AddUserSkillDto } from './add-user-skill.dto'
+import { CreateSkillDto } from './dto/create-skill.dto'
+import { AddUserSkillDto } from './dto/add-user-skill.dto'
+import { UpdateSkillDto } from './dto/update-skill.dto'
 
 @Injectable()
 export class SkillsService {
@@ -59,6 +60,31 @@ export class SkillsService {
         hoursSpent: dto.hoursSpent ?? 0,
       },
       include: { skill: true },
+    })
+  }
+
+  // ADMIN: Cập nhật thông tin kỹ năng
+  async updateSkill(id: string, dto: UpdateSkillDto) {
+    const skill = await this.prisma.skill.findUnique({ where: { id } })
+    if (!skill) {
+      throw new NotFoundException('Không tìm thấy kỹ năng này')
+    }
+
+    return this.prisma.skill.update({
+      where: { id },
+      data: dto,
+    })
+  }
+
+  // ADMIN: Xóa kỹ năng
+  async deleteSkill(id: string) {
+    const skill = await this.prisma.skill.findUnique({ where: { id } })
+    if (!skill) {
+      throw new NotFoundException('Không tìm thấy kỹ năng này')
+    }
+
+    return this.prisma.skill.delete({
+      where: { id },
     })
   }
 }
