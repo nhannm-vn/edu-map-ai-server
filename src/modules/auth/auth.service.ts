@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common'
-import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto'
+import { Injectable, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common'
+import { RegisterDto, LoginDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto/auth.dto'
 import * as bcrypt from 'bcrypt'
 import * as crypto from 'crypto'
 import { JwtService } from '@nestjs/jwt'
