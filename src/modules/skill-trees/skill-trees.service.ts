@@ -226,8 +226,12 @@ export class SkillTreesService {
     }
   }
 
-  // [STUDENT] Toggle Bật / Tắt Hoàn Thành Node & Tự Động Cập Nhật Tiến Độ Cây
-  async toggleNodeCompletion(userId: string, treeId: string, nodeId: string): Promise<SkillTreeNode> {
+  /**
+   * [STUDENT] Toggle trạng thái node kỹ năng
+   * Đảm bảo tính toán % Cây và tự động sync sang bảng userSkills
+   */
+  async toggleNodeCompletion(userId: string, treeId: string, nodeId: string) {
+    // 1. Kiểm tra Cây Kỹ Năng có thuộc về User không
     const tree = await this.prisma.skillTree.findFirst({
       where: { id: treeId, userId },
     })
@@ -236,6 +240,7 @@ export class SkillTreesService {
       throw new NotFoundException('Cây kỹ năng không thuộc về người dùng này')
     }
 
+    // 2. Kiểm tra Node có tồn tại trong Cây này không
     const node = await this.prisma.skillTreeNode.findFirst({
       where: { id: nodeId, skillTreeId: treeId },
     })
@@ -245,31 +250,63 @@ export class SkillTreesService {
     }
 
     const nextCompletedState = !node.isCompleted
-    const updatedNode = await this.prisma.skillTreeNode.update({
-      where: { id: nodeId },
-      data: {
-        isCompleted: nextCompletedState,
-        completedAt: nextCompletedState ? new Date() : null,
-      },
-      include: { skill: true },
+
+    // 3. Thực thi Transaction theo chuẩn dữ liệu của Schema
+    return await this.prisma.$transaction(async (tx) => {
+      // A. Cập nhật trạng thái Node trong skillTreeNodes
+      const updatedNode = await tx.skillTreeNode.update({
+        where: { id: nodeId },
+        data: {
+          isCompleted: nextCompletedState,
+          completedAt: nextCompletedState ? new Date() : null,
+        },
+        include: { skill: true },
+      })
+
+      // B. Đồng bộ tự động sang bảng userSkills khi Hoàn thành (isCompleted = true)
+      if (nextCompletedState) {
+        await tx.userSkill.upsert({
+          where: {
+            userId_skillId: {
+              userId,
+              skillId: node.skillId,
+            },
+          },
+          update: {
+            // Trường hợp đã có skill này trong Hồ sơ, có thể giữ nguyên hoặc tăng nhẹ hoursSpent
+            hoursSpent: { increment: 5 },
+          },
+          create: {
+            userId,
+            skillId: node.skillId,
+            proficiencyLevel: 1, // Dạng int (default: 1 theo schema)
+            hoursSpent: 5, // Dạng int
+            verifiedByGithub: false,
+          },
+        })
+      }
+
+      // C. Lấy danh sách các Node có isVisible = true để tính lại % Tiến độ
+      const allVisibleNodes = await tx.skillTreeNode.findMany({
+        where: { skillTreeId: treeId, isVisible: true },
+      })
+
+      const totalNodes = allVisibleNodes.length
+      const completedNodes = allVisibleNodes.filter((n) => n.isCompleted).length
+
+      // Kiểu dữ liệu Float trong schema
+      const newCompletionPercentage = totalNodes > 0 ? Number(((completedNodes / totalNodes) * 100).toFixed(2)) : 0
+
+      // D. Cập nhật % completionPercentage và thời gian lastAnalyzedAt cho skillTrees
+      await tx.skillTree.update({
+        where: { id: treeId },
+        data: {
+          completionPercentage: newCompletionPercentage,
+          lastAnalyzedAt: new Date(),
+        },
+      })
+
+      return updatedNode
     })
-
-    const allNodes = await this.prisma.skillTreeNode.findMany({
-      where: { skillTreeId: treeId, isVisible: true },
-    })
-
-    const totalNodes = allNodes.length
-    const completedNodes = allNodes.filter((n) => n.isCompleted).length
-    const newCompletionPercentage = totalNodes > 0 ? (completedNodes / totalNodes) * 100 : 0
-
-    await this.prisma.skillTree.update({
-      where: { id: treeId },
-      data: {
-        completionPercentage: newCompletionPercentage,
-        lastAnalyzedAt: new Date(),
-      },
-    })
-
-    return updatedNode
   }
 }
