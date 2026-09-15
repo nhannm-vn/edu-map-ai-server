@@ -1,11 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
-import { Roles } from '../auth/decorators/roles.decorator'
 import * as requestWithUserInterface from '../auth/interfaces/request-with-user.interface'
 import { CreateSkillTreeDto } from './dto/create-skill-tree.dto'
 import { CreateTreeNodeDto } from './dto/create-tree-node.dto'
+import { ResetMyTreeDto } from './dto/reset-my-tree.dto'
 import { UpdateSkillTreeDto } from './dto/update-skill-tree.dto'
 import { UpdateTreeNodeDto } from './dto/update-tree-node.dto'
 import { SkillTreeWithNodes, TreeProgressResponse } from './interfaces/tree-progress.interface'
@@ -15,6 +16,36 @@ import { SkillTreesService } from './skill-trees.service'
 @Controller('skill-trees')
 export class SkillTreesController {
   constructor(private readonly skillTreesService: SkillTreesService) {}
+
+  // -------------------------------------------------------------
+  // STUDENT EXPERIENCE ROUTES (Ưu tiên đặt trên các route có :id)
+  // -------------------------------------------------------------
+
+  @Get('my-tree')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[STUDENT] Lấy Cây Kỹ Năng của người dùng đang đăng nhập',
+    description: 'Dựa vào JWT Token để trả về lộ trình và % tiến độ học tập.',
+  })
+  async getMyTree(@Req() req: requestWithUserInterface.RequestWithUser) {
+    return this.skillTreesService.getMyTree(req.user.id)
+  }
+
+  @Post('my-tree/reset')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '[STUDENT] Đặt lại lộ trình kỹ năng mới',
+    description: 'Xóa lộ trình hiện tại và tạo khung Cây mới theo định hướng nghề nghiệp mới.',
+  })
+  async resetMyTree(@Req() req: requestWithUserInterface.RequestWithUser, @Body() dto: ResetMyTreeDto) {
+    return this.skillTreesService.resetMyTree(req.user.id, dto)
+  }
+
+  // -------------------------------------------------------------
+  // SYSTEM & GENERAL ROUTES
+  // -------------------------------------------------------------
 
   @Get()
   @ApiOperation({ summary: 'Lấy danh sách tất cả Cây Kỹ Năng' })
@@ -27,6 +58,10 @@ export class SkillTreesController {
   async getTreeById(@Param('id') id: string): Promise<SkillTreeWithNodes> {
     return this.skillTreesService.getTreeById(id)
   }
+
+  // -------------------------------------------------------------
+  // ADMIN ROUTES
+  // -------------------------------------------------------------
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -82,13 +117,19 @@ export class SkillTreesController {
     return this.skillTreesService.deleteNode(nodeId)
   }
 
+  // -------------------------------------------------------------
+  // STUDENT PROGRESS & TOGGLE ROUTES
+  // -------------------------------------------------------------
+
   @Get(':treeId/my-progress')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[STUDENT] Xem tiến độ hoàn thành Cây Kỹ Năng của tôi' })
+  @ApiOperation({
+    summary: '[STUDENT] Xem tiến độ hoàn thành Cây Kỹ Năng của tôi (theo treeId)',
+  })
   async getTreeProgress(
     @Param('treeId') treeId: string,
-    @Request() req: requestWithUserInterface.RequestWithUser,
+    @Req() req: requestWithUserInterface.RequestWithUser,
   ): Promise<TreeProgressResponse> {
     return this.skillTreesService.getTreeProgress(treeId, req.user.id)
   }
@@ -96,11 +137,13 @@ export class SkillTreesController {
   @Post(':treeId/nodes/:nodeId/toggle')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '[STUDENT] Đánh dấu / Bỏ đánh dấu hoàn thành Node' })
+  @ApiOperation({
+    summary: '[STUDENT] Đánh dấu / Bỏ đánh dấu hoàn thành Node',
+  })
   async toggleNodeCompletion(
     @Param('treeId') treeId: string,
     @Param('nodeId') nodeId: string,
-    @Request() req: requestWithUserInterface.RequestWithUser,
+    @Req() req: requestWithUserInterface.RequestWithUser,
   ) {
     return this.skillTreesService.toggleNodeCompletion(req.user.id, treeId, nodeId)
   }

@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { SkillTree, SkillTreeNode } from '@prisma/client'
 import { CreateSkillTreeDto } from './dto/create-skill-tree.dto'
@@ -6,10 +10,83 @@ import { UpdateSkillTreeDto } from './dto/update-skill-tree.dto'
 import { UpdateTreeNodeDto } from './dto/update-tree-node.dto'
 import { SkillTreeWithNodes, TreeProgressResponse } from './interfaces/tree-progress.interface'
 import { PrismaService } from 'prisma/prisma.service'
+import { ResetMyTreeDto } from './dto/reset-my-tree.dto'
 
 @Injectable()
 export class SkillTreesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * [STUDENT] Lấy Cây Kỹ Năng cá nhân của User đang đăng nhập
+   */
+  async getMyTree(userId: string): Promise<TreeProgressResponse> {
+    // 1. Lấy thông tin cây kỹ năng kèm danh sách nodes và skill liên kết
+    const tree = await this.prisma.skillTree.findUnique({
+      where: { userId },
+      include: {
+        nodes: {
+          where: { isVisible: true },
+          include: {
+            skill: true, // Lấy toàn bộ thông tin của Skill (tránh lỗi chọn sai field description)
+          },
+          orderBy: { priorityRank: 'asc' },
+        },
+      },
+    })
+
+    if (!tree) {
+      throw new NotFoundException('Bạn chưa có cây kỹ năng nào. Hãy tạo lộ trình mới!')
+    }
+
+    // 2. Tính toán tiến độ
+    const totalNodes = tree.nodes.length
+    const completedCount = tree.nodes.filter((node) => node.isCompleted).length
+    const completionPercentage = totalNodes > 0 ? Math.round((completedCount / totalNodes) * 100) : 0
+
+    return {
+      treeId: tree.id,
+      careerPath: tree.careerPath,
+      completionPercentage,
+      completedCount,
+      totalNodes,
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+      nodes: tree.nodes as any, // Cast type nhẹ để khớp hoàn toàn với interface trả về
+    }
+  }
+
+  /**
+   * [STUDENT] Reset/Xóa cây cũ để tạo cây mới
+   */
+  async resetMyTree(userId: string, dto: ResetMyTreeDto) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Kiểm tra cây cũ
+      const existingTree = await tx.skillTree.findUnique({
+        where: { userId },
+      })
+
+      // 2. Nếu có cây cũ thì xóa
+      if (existingTree) {
+        await tx.skillTree.delete({
+          where: { userId },
+        })
+      }
+
+      // 3. Tạo cây mới
+      const newTree = await tx.skillTree.create({
+        data: {
+          userId,
+          careerPath: dto.careerPath,
+          completionPercentage: 0,
+          lastAnalyzedAt: new Date(),
+        },
+      })
+
+      return {
+        message: 'Đặt lại lộ trình thành công. Đang chờ AI phân tích các mốc kỹ năng mới!',
+        tree: newTree,
+      }
+    })
+  }
 
   // Lấy danh sách tất cả Cây Kỹ Năng
   async getAllTrees(): Promise<SkillTreeWithNodes[]> {
