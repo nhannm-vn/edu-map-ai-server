@@ -1,19 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator'
+import { IsInt, IsNotEmpty, IsOptional, IsUUID, Min } from 'class-validator'
 
 export class CreateTreeNodeDto {
-  @ApiProperty({ example: 'uuid-cua-skill' })
+  @ApiProperty({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' })
   @IsUUID()
   @IsNotEmpty()
-  skillId: string | undefined
+  skillId!: string
 
-  @ApiProperty({ example: 1, description: 'Thứ tự vị trí mốc học trong cây' })
+  @ApiProperty({ example: 1, description: 'Cấp độ của node trong cây' })
   @IsInt()
   @Min(1)
-  positionOrder: number | undefined
+  nodeLevel!: number
 
-  @ApiPropertyOptional({ example: 'Nắm vững khái niệm Async/Await và Event Loop' })
-  @IsString()
+  @ApiPropertyOptional({ example: 1, description: 'Thứ tự ưu tiên học' })
+  @IsInt()
   @IsOptional()
-  description?: string
+  priorityRank?: number
 }
