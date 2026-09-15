@@ -1,3 +1,4 @@
+import { SkillResourcesModule } from './modules/skill-resource/skill-resources.module'
 import { SkillTreesModule } from './modules/skill-trees/skill-trees.module'
 import { SkillsModule } from './modules/skills/skills.module'
 import { Module } from '@nestjs/common'
@@ -9,6 +10,7 @@ import { UsersModule } from './modules/users/users.module'
 
 @Module({
   imports: [
+    SkillResourcesModule,
     SkillTreesModule,
     SkillsModule, //
     PrismaModule,
