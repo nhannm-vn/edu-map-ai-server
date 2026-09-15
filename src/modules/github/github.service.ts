@@ -58,23 +58,47 @@ export class GithubService {
       },
     )
 
+    // Pull chi tiết ngôn ngữ từng repo song song hoặc tuần tự
+    const payload = await Promise.all(
+      repos.map(async (r: any) => {
+        let langMap = {}
+        try {
+          const { data: langs } = await axios.get(
+            `https://api.github.com/repos/${profile.githubUsername}/${r.name}/languages`,
+            {
+              headers: {
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'EduMap-AI',
+                ...(profile.accessToken ? { Authorization: `token ${profile.accessToken}` } : {}),
+              },
+            },
+          )
+          langMap = langs // VD: { "TypeScript": 18200, "HTML": 4500 }
+        } catch {
+          langMap = r.language ? { [r.language]: 1 } : {}
+        }
+
+        return {
+          githubProfileId: profile.id,
+          repoName: r.name,
+          repoUrl: r.html_url,
+          mainLanguage: r.language || null,
+          languages: langMap,
+        }
+      }),
+    )
+
     return await this.prisma.$transaction(async (tx) => {
       await tx.githubRepository.deleteMany({
         where: { githubProfileId: profile.id },
       })
-
-      const payload = repos.map((r: any) => ({
-        githubProfileId: profile.id,
-        repoName: r.name,
-        repoUrl: r.html_url,
-        mainLanguage: r.language || null,
-      }))
 
       if (payload.length) {
         await tx.githubRepository.createMany({ data: payload })
       }
 
       return tx.githubProfile.update({
+        // giữ nguyên logic update của bạn
         where: { id: profile.id },
         data: { lastSyncedAt: new Date() },
       })

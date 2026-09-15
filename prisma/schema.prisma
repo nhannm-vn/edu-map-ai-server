@@ -33,6 +33,7 @@ model User {
   portfolio          Portfolio?
   aiAnalyses         AiAnalysis[]
   recommendations    Recommendation[]
+  selfAssessments SelfAssessment[]
 
   @@index([email])
   @@index([githubUsername])
@@ -269,4 +270,18 @@ model SkillResource {
   @@index([skillId])
   @@index([resourceType])
   @@map("skillResources")
+}
+
+model SelfAssessment {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  targetRole     String
+  selfAssessment Json
+  cvSummaryText  String   @db.Text
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("selfAssessments")
 }
