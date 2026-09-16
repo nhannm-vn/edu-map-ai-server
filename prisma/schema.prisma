@@ -12,19 +12,19 @@ enum Role {
 }
 
 model User {
-  id               String   @id @default(uuid()) @db.Uuid
-  email            String   @unique
-  passwordHash     String
-  fullName         String
-  universityName   String?
-  currentYear      Int?
-  githubUsername   String?
-  role             Role     @default(STUDENT)
-  subscriptionTier String   @default("FREE")
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  passwordHash        String
+  fullName            String
+  universityName      String?
+  currentYear         Int?
+  githubUsername      String?
+  role                Role      @default(STUDENT)
+  subscriptionTier    String    @default("FREE")
   resetToken          String?   @map("reset_token")
   resetTokenExpiresAt DateTime? @map("reset_token_expires_at")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @default(now()) @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
 
   userSkills         UserSkill[]
   skillTree          SkillTree?
@@ -251,17 +251,26 @@ model Affiliate {
   @@map("affiliates")
 }
 
+enum ResourceType {
+  VIDEO_COURSE
+  DOCUMENTATION
+  ARTICLE
+  INTERACTIVE_LAB
+  PRACTICE
+  BOOK
+}
+
 model SkillResource {
-  id            String   @id @default(uuid()) @db.Uuid
-  skillId       String   @db.Uuid
-  affiliateId   String?  @db.Uuid
-  resourceType  String?
+  id            String       @id @default(uuid()) @db.Uuid
+  skillId       String       @db.Uuid
+  affiliateId   String?      @db.Uuid
+  resourceType  ResourceType @default(VIDEO_COURSE) // Update ở đây
   title         String
   url           String
-  cost          Float    @default(0)
+  cost          Float        @default(0)
   rating        Float?
   durationHours Int?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime     @default(now())
 
   skill     Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
   affiliate Affiliate? @relation(fields: [affiliateId], references: [id])
