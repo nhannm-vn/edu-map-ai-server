@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 import { Injectable, NotFoundException, Logger } from '@nestjs/common'
@@ -25,6 +28,52 @@ export class SkillResourcesService {
     private readonly prisma: PrismaService,
     private readonly httpService: HttpService,
   ) {}
+
+  /**
+   * 1. Ghi nhận lượt xem tài liệu của sinh viên
+   */
+  async recordViewHistory(userId: string, skillResourceId: string) {
+    const resource = await this.prisma.skillResource.findUnique({
+      where: { id: skillResourceId },
+    })
+
+    if (!resource) {
+      throw new NotFoundException('Tài nguyên học tập không tồn tại trong hệ thống')
+    }
+
+    return await this.prisma.resourceHistory.create({
+      data: {
+        userId,
+        skillResourceId,
+      },
+    })
+  }
+
+  /**
+   * 2. Lấy danh sách lịch sử tài liệu đã xem của sinh viên
+   */
+  async getUserHistory(userId: string, limit: number = 20) {
+    const take = Number(limit) > 0 ? Number(limit) : 20
+
+    return await this.prisma.resourceHistory.findMany({
+      where: { userId },
+      take,
+      orderBy: { viewedAt: 'desc' },
+      include: {
+        skillResource: {
+          include: {
+            skill: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+              },
+            },
+          },
+        },
+      },
+    })
+  }
 
   /**
    * Lấy danh sách tài nguyên học tập theo Skill ID (Dạng phẳng).
