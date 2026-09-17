@@ -1,10 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { GoogleGenAI } from '@google/genai'
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common'
-import { AnalyzeReadmeDto, SyncGithubDto } from './dto/github.dto'
+import { SyncGithubDto } from './dto/github.dto'
 import { PrismaService } from 'prisma/prisma.service'
 
 interface GithubRepoResponse {
@@ -17,27 +15,74 @@ interface GithubRepoResponse {
 @Injectable()
 export class GithubService {
   private readonly logger = new Logger(GithubService.name)
-  private readonly ai: GoogleGenAI | null = null
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // 1. Hàm trợ giúp: Đọc README và gọi AI phân tích Tech Stack cho 1 Repo
+  private async extractTechStackFromRepo(owner: string, repo: string): Promise<string[]> {
+    let readmeContent = ''
+    try {
+      let res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/main/README.md`)
+      if (!res.ok) {
+        res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/master/README.md`)
+      }
+      if (res.ok) {
+        readmeContent = await res.text()
+      }
+    } catch {
+      this.logger.warn(`Không đọc được README cho ${owner}/${repo}`)
+    }
+
+    // Nếu không có README, trả về mảng rỗng
+    if (!readmeContent.trim()) return []
+
     const apiKey = process.env.GEMINI_API_KEY
-    if (apiKey) {
-      this.ai = new GoogleGenAI({ apiKey })
+    if (!apiKey) return []
+
+    const prompt = `
+    Đọc file README sau và trích xuất danh sách công nghệ/thư viện chính đã được sử dụng.
+    README: ${readmeContent.substring(0, 3000)}
+
+    TRẢ VỀ ĐỊNH DẠNG JSON ARRAY TÊN CÁC CÔNG NGHỆ (Ví dụ: ["NestJS", "Prisma", "Docker"]):
+    `
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' },
+          }),
+        },
+      )
+
+      if (!response.ok) return []
+
+      const data = await response.json()
+      const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text
+      return responseText ? (JSON.parse(responseText) as string[]) : []
+    } catch (err) {
+      this.logger.error(`Lỗi AI đọc README của ${repo}:`, err)
+      return []
     }
   }
 
-  async syncRepositories(userId: string, dto: SyncGithubDto) {
-    // 1. Kiểm tra profile hiện tại
+  // 2. API Tự động hóa toàn bộ: Sync Repos + Phân tích AI cho tất cả
+  async syncAndAnalyzeRepositories(userId: string, dto: SyncGithubDto) {
+    // A. Kiểm tra profile hiện tại
     let profile = await this.prisma.githubProfile.findUnique({
       where: { userId },
     })
 
     const isUsernameChanged = profile && profile.githubUsername !== dto.username
 
-    // 2. Gọi API GitHub TRƯỚC để đảm bảo username tồn tại hợp lệ
+    // B. Fetch Repos từ GitHub API (Lấy 10 repos mới nhất)
     let repos: GithubRepoResponse[] = []
     try {
-      const res = await fetch(`https://api.github.com/users/${dto.username}/repos?sort=updated&per_page=15`, {
+      const res = await fetch(`https://api.github.com/users/${dto.username}/repos?sort=updated&per_page=10`, {
         headers: { 'User-Agent': 'EduMap-App' },
       })
 
@@ -47,20 +92,18 @@ export class GithubService {
 
       repos = (await res.json()) as GithubRepoResponse[]
     } catch (err) {
-      this.logger.error('Lỗi sync GitHub:', err)
       if (err instanceof BadRequestException) throw err
       throw new InternalServerErrorException('Không thể kết nối API GitHub.')
     }
 
-    // 3. Nếu username hợp lệ VÀ đã bị thay đổi -> Xóa sạch repos cũ
+    // C. Xóa repos cũ nếu đổi sang Username khác
     if (isUsernameChanged && profile) {
       await this.prisma.githubRepository.deleteMany({
         where: { githubProfileId: profile.id },
       })
-      this.logger.log(`Đã xóa repos cũ do đổi username sang: ${dto.username}`)
     }
 
-    // 4. Tạo hoặc Cập nhật GithubProfile
+    // D. Tạo/Cập nhật Profile & User
     if (!profile) {
       profile = await this.prisma.githubProfile.create({
         data: {
@@ -81,130 +124,51 @@ export class GithubService {
       })
     }
 
-    // Cập nhật username trên User model
     await this.prisma.user.update({
       where: { id: userId },
       data: { githubUsername: dto.username },
     })
 
-    // 5. Lưu danh sách Repositories mới vào DB
-    const upsertOps = repos.map((repo) =>
-      this.prisma.githubRepository.upsert({
-        where: {
-          githubProfileId_repoName: {
+    // E. TỰ ĐỘNG HÓA: Song song cào README + Gọi AI phân tích từng Repo
+    const processedRepos = await Promise.all(
+      repos.map(async (repo) => {
+        const extractedTechStack = await this.extractTechStackFromRepo(dto.username, repo.name)
+
+        // Lưu vào DB
+        const savedRepo = await this.prisma.githubRepository.upsert({
+          where: {
+            githubProfileId_repoName: {
+              githubProfileId: profile.id,
+              repoName: repo.name,
+            },
+          },
+          update: {
+            repoUrl: repo.html_url,
+            mainLanguage: repo.language,
+            techStack: extractedTechStack,
+          },
+          create: {
             githubProfileId: profile.id,
             repoName: repo.name,
+            repoUrl: repo.html_url,
+            mainLanguage: repo.language,
+            techStack: extractedTechStack,
           },
-        },
-        update: {
-          repoUrl: repo.html_url,
-          mainLanguage: repo.language,
-        },
-        create: {
-          githubProfileId: profile.id,
-          repoName: repo.name,
-          repoUrl: repo.html_url,
-          mainLanguage: repo.language,
-        },
+        })
+
+        return savedRepo
       }),
     )
 
-    await Promise.all(upsertOps)
+    // F. Tổng hợp tất cả Tech-Stack thu thập được từ tất cả các Repos
+    const allExtractedTechs = Array.from(new Set(processedRepos.flatMap((r) => r.techStack || [])))
 
     return {
-      message: 'Đồng bộ danh sách dự án GitHub thành công!',
-      syncedCount: repos.length,
-    }
-  }
-
-  // Trong github.service.ts
-  async analyzeReadme(userId: string, dto: AnalyzeReadmeDto) {
-    const profile = await this.prisma.githubProfile.findUnique({
-      where: { userId },
-    })
-
-    if (!profile) {
-      throw new BadRequestException('Bạn chưa đồng bộ hồ sơ GitHub. Vui lòng chạy Sync trước.')
-    }
-
-    // 1. Tải nội dung README.md từ GitHub Raw
-    let readmeContent = ''
-    try {
-      let res = await fetch(`https://raw.githubusercontent.com/${dto.owner}/${dto.repo}/main/README.md`)
-      if (!res.ok) {
-        res = await fetch(`https://raw.githubusercontent.com/${dto.owner}/${dto.repo}/master/README.md`)
-      }
-      if (res.ok) {
-        readmeContent = await res.text()
-      }
-    } catch {
-      this.logger.warn(`Không đọc được README cho ${dto.owner}/${dto.repo}`)
-    }
-
-    if (!readmeContent) {
-      throw new BadRequestException('Không tìm thấy file README.md công khai trong dự án này.')
-    }
-
-    // 2. Lấy API Key
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      throw new InternalServerErrorException('Chưa cấu hình GEMINI_API_KEY trong file .env.')
-    }
-
-    const prompt = `
-  Đọc file README sau và trích xuất danh sách công nghệ/thư viện chính đã được sử dụng.
-  README: ${readmeContent.substring(0, 3500)}
-
-  TRẢ VỀ ĐỊNH DẠNG JSON ARRAY TÊN CÁC CÔNG NGHỆ:
-  ["NestJS", "Prisma", "PostgreSQL", "Docker"]
-  `
-
-    // 3. Gọi Gemini API (Sử dụng model gemini-3.6-flash)
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' },
-          }),
-        },
-      )
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`Gemini API Error: ${JSON.stringify(errorData)}`)
-      }
-
-      const data = await response.json()
-      const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text
-
-      if (!responseText) {
-        throw new Error('AI không phản hồi nội dung.')
-      }
-
-      const techStackArray = JSON.parse(responseText) as string[]
-
-      // 4. Lưu vào Database
-      await this.prisma.githubRepository.update({
-        where: {
-          githubProfileId_repoName: {
-            githubProfileId: profile.id,
-            repoName: dto.repo,
-          },
-        },
-        data: { techStack: techStackArray },
-      })
-
-      return {
-        repoName: dto.repo,
-        extractedTechStack: techStackArray,
-      }
-    } catch (err) {
-      this.logger.error('Lỗi Gemini API:', err)
-      throw new InternalServerErrorException((err as Error).message)
+      message: 'Đồng bộ và phân tích toàn bộ dự án GitHub thành công!',
+      githubUsername: dto.username,
+      totalReposSynced: processedRepos.length,
+      aggregatedTechStack: allExtractedTechs, // Trả về danh sách kỹ năng tổng hợp
+      repositories: processedRepos,
     }
   }
 }
