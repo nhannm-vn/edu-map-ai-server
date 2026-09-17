@@ -154,10 +154,12 @@ model GithubRepository {
   languages       Json?
   mainLanguage    String?
   extractedSkills Json?
+  techStack       Json?    @map("tech_stack")
   createdAt       DateTime @default(now())
 
   githubProfile GithubProfile @relation(fields: [githubProfileId], references: [id], onDelete: Cascade)
 
+  @@unique([githubProfileId, repoName])
   @@index([githubProfileId])
   @@map("githubRepositories")
 }
@@ -265,9 +267,9 @@ model SkillResource {
   id            String       @id @default(uuid()) @db.Uuid
   skillId       String       @db.Uuid
   affiliateId   String?      @db.Uuid
-  resourceType  ResourceType @default(VIDEO_COURSE) // Update ở đây
+  resourceType  ResourceType @default(VIDEO_COURSE)
   title         String
-  url           String       @unique // Thêm @unique ở đây
+  url           String       @unique
   cost          Float        @default(0)
   rating        Float?
   durationHours Int?
@@ -283,16 +285,15 @@ model SkillResource {
 }
 
 model ResourceHistory {
-  id              String @id @default(uuid()) @db.Uuid
-  userId          String @db.Uuid // Kiểu UUID cho khớp với User.id
-  skillResourceId String @db.Uuid // Fix: Thêm @db.Uuid cho khớp với SkillResource.id
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  skillResourceId String   @db.Uuid
+  viewedAt        DateTime @default(now())
 
-  viewedAt DateTime @default(now())
-
-  // Quan hệ
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   skillResource SkillResource @relation(fields: [skillResourceId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([skillResourceId])
+  @@map("resourceHistories")
 }
