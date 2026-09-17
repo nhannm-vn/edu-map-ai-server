@@ -241,104 +241,119 @@ export class AiAdvisorService {
 
     // 6. Transaction lưu Database
     try {
-      const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const aiAnalysis = await tx.aiAnalysis.create({
-          data: {
-            userId,
-            analysisType: 'SKILL_TREE_GENERATION',
-            recommendedPath: dto.targetRole,
-            aiResponse: aiResult as unknown as Prisma.InputJsonValue,
-            modelUsed,
-          },
-        })
-
-        const skillTree = await tx.skillTree.upsert({
-          where: { userId },
-          update: {
-            careerPath: dto.targetRole ?? 'Undecided',
-            lastAnalyzedAt: new Date(),
-          },
-          create: {
-            userId,
-            careerPath: dto.targetRole ?? 'Undecided',
-            lastAnalyzedAt: new Date(),
-          },
-        })
-
-        await tx.skillTreeNode.deleteMany({
-          where: { skillTreeId: skillTree.id },
-        })
-
-        const createdNodes: Prisma.SkillTreeNodeGetPayload<{
-          include: { skill: true }
-        }>[] = []
-        const nodeRecords: Array<{ node: AiNodeResponse; skillId: string }> = []
-        for (const node of aiResult.nodes || []) {
-          const normalizedName = node.skillName.trim()
-          const existingSkill = await tx.skill.findFirst({
-            where: { name: { equals: normalizedName, mode: 'insensitive' } },
-          })
-          const skill =
-            existingSkill ??
-            (await tx.skill.create({
-              data: {
-                name: normalizedName,
-                category: node.category.trim(),
-                difficultyLevel: Number(node.nodeLevel ?? 1),
-              },
-            }))
-
-          nodeRecords.push({ node, skillId: skill.id })
-        }
-
-        const createdNodeBySkillName = new Map<string, { id: string }>()
-        for (const { node, skillId } of nodeRecords) {
-          const isCompleted = node.status?.toUpperCase() === 'COMPLETED'
-
-          const treeNode = await tx.skillTreeNode.create({
+      const result = await this.prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const aiAnalysis = await tx.aiAnalysis.create({
             data: {
-              skillTreeId: skillTree.id,
-              skillId,
-              nodeLevel: Number(node.nodeLevel ?? 1),
-              priorityRank: Number(node.priorityRank ?? 1),
-              isCompleted,
-              completedAt: isCompleted ? new Date() : null,
-              isVisible: true,
+              userId,
+              analysisType: 'SKILL_TREE_GENERATION',
+              recommendedPath: dto.targetRole,
+              aiResponse: aiResult as unknown as Prisma.InputJsonValue,
+              modelUsed,
             },
-            include: { skill: true },
           })
 
-          createdNodes.push(treeNode)
-          createdNodeBySkillName.set(node.skillName.trim().toLowerCase(), treeNode)
-        }
-
-        for (const { node } of nodeRecords) {
-          if (!node.parentSkillName) continue
-
-          const child = createdNodeBySkillName.get(node.skillName.trim().toLowerCase())
-          const parent = createdNodeBySkillName.get(node.parentSkillName.trim().toLowerCase())
-          if (!child || !parent || child.id === parent.id) continue
-
-          const updatedNode = await tx.skillTreeNode.update({
-            where: { id: child.id },
-            data: { parentNodeId: parent.id },
-            include: { skill: true },
+          const skillTree = await tx.skillTree.upsert({
+            where: { userId },
+            update: {
+              careerPath: dto.targetRole ?? 'Undecided',
+              lastAnalyzedAt: new Date(),
+            },
+            create: {
+              userId,
+              careerPath: dto.targetRole ?? 'Undecided',
+              lastAnalyzedAt: new Date(),
+            },
           })
-          const index = createdNodes.findIndex((createdNode) => createdNode.id === child.id)
-          if (index >= 0) createdNodes[index] = updatedNode
-        }
 
-        return {
-          analysisId: aiAnalysis.id,
-          treeId: skillTree.id,
-          careerPath: skillTree.careerPath,
-          summary: aiResult.summary,
-          strengths: aiResult.strengths,
-          weaknesses: aiResult.weaknesses,
-          recommendations: aiResult.recommendations,
-          nodes: createdNodes,
-        }
-      })
+          await tx.skillTreeNode.deleteMany({
+            where: { skillTreeId: skillTree.id },
+          })
+
+          const createdNodes: Prisma.SkillTreeNodeGetPayload<{
+            include: { skill: true }
+          }>[] = []
+          const nodeRecords: Array<{ node: AiNodeResponse; skillId: string }> = []
+          const normalizedSkillNames = [...new Set((aiResult.nodes || []).map((node) => node.skillName.trim()))]
+          const existingSkills = await tx.skill.findMany({
+            where: {
+              OR: normalizedSkillNames.map((name) => ({
+                name: { equals: name, mode: 'insensitive' as const },
+              })),
+            },
+          })
+          const skillsByName = new Map(existingSkills.map((skill) => [skill.name.toLowerCase(), skill]))
+
+          for (const node of aiResult.nodes || []) {
+            const normalizedName = node.skillName.trim()
+            const existingSkill = skillsByName.get(normalizedName.toLowerCase())
+            const skill =
+              existingSkill ??
+              (await tx.skill.create({
+                data: {
+                  name: normalizedName,
+                  category: node.category.trim(),
+                  difficultyLevel: Number(node.nodeLevel ?? 1),
+                },
+              }))
+
+            skillsByName.set(normalizedName.toLowerCase(), skill)
+            nodeRecords.push({ node, skillId: skill.id })
+          }
+
+          const createdNodeBySkillName = new Map<string, { id: string }>()
+          for (const { node, skillId } of nodeRecords) {
+            const isCompleted = node.status?.toUpperCase() === 'COMPLETED'
+
+            const treeNode = await tx.skillTreeNode.create({
+              data: {
+                skillTreeId: skillTree.id,
+                skillId,
+                nodeLevel: Number(node.nodeLevel ?? 1),
+                priorityRank: Number(node.priorityRank ?? 1),
+                isCompleted,
+                completedAt: isCompleted ? new Date() : null,
+                isVisible: true,
+              },
+              include: { skill: true },
+            })
+
+            createdNodes.push(treeNode)
+            createdNodeBySkillName.set(node.skillName.trim().toLowerCase(), treeNode)
+          }
+
+          for (const { node } of nodeRecords) {
+            if (!node.parentSkillName) continue
+
+            const child = createdNodeBySkillName.get(node.skillName.trim().toLowerCase())
+            const parent = createdNodeBySkillName.get(node.parentSkillName.trim().toLowerCase())
+            if (!child || !parent || child.id === parent.id) continue
+
+            const updatedNode = await tx.skillTreeNode.update({
+              where: { id: child.id },
+              data: { parentNodeId: parent.id },
+              include: { skill: true },
+            })
+            const index = createdNodes.findIndex((createdNode) => createdNode.id === child.id)
+            if (index >= 0) createdNodes[index] = updatedNode
+          }
+
+          return {
+            analysisId: aiAnalysis.id,
+            treeId: skillTree.id,
+            careerPath: skillTree.careerPath,
+            summary: aiResult.summary,
+            strengths: aiResult.strengths,
+            weaknesses: aiResult.weaknesses,
+            recommendations: aiResult.recommendations,
+            nodes: createdNodes,
+          }
+        },
+        {
+          maxWait: 10_000,
+          timeout: 30_000,
+        },
+      )
 
       return {
         message: 'Tạo Cây Kỹ Năng và phân tích năng lực thành công!',

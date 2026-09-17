@@ -104,8 +104,8 @@ model SkillTreeNode {
   completedAt  DateTime?
   createdAt    DateTime  @default(now())
 
-  skillTree SkillTree @relation(fields: [skillTreeId], references: [id], onDelete: Cascade)
-  skill     Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillTree  SkillTree       @relation(fields: [skillTreeId], references: [id], onDelete: Cascade)
+  skill      Skill           @relation(fields: [skillId], references: [id], onDelete: Cascade)
   parentNode SkillTreeNode?  @relation("NodeHierarchy", fields: [parentNodeId], references: [id], onDelete: Cascade)
   children   SkillTreeNode[] @relation("NodeHierarchy")
 
