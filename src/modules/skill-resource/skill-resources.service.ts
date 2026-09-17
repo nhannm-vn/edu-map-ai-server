@@ -80,7 +80,6 @@ export class SkillResourcesService {
    * Tự động kết nối Third-Party APIs (YouTube, Dev.to, DevDocs, GitHub) nếu DB chưa có tài nguyên.
    */
   async getResourcesBySkill(skillId: string) {
-    // 1. Kiểm tra Skill có tồn tại không
     const skill = await this.prisma.skill.findUnique({
       where: { id: skillId },
     })
@@ -89,20 +88,18 @@ export class SkillResourcesService {
       throw new NotFoundException('Kỹ năng không tồn tại trong hệ thống')
     }
 
-    // 2. Tìm tài nguyên đã có trong DB
     let resources = await this.prisma.skillResource.findMany({
       where: { skillId },
-      orderBy: { rating: 'desc' },
+      orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
     })
 
-    // 3. Nếu chưa có -> Tự động cào đa nguồn tài nguyên uy tín về lưu DB
+    // Nếu chưa có trong DB -> cào lần đầu
     if (resources.length === 0) {
       await this.fetchAndSaveMultiSourceResources(skill.id, skill.name)
 
-      // Query lại DB sau khi đã nạp tự động
       resources = await this.prisma.skillResource.findMany({
         where: { skillId },
-        orderBy: { rating: 'desc' },
+        orderBy: [{ rating: 'desc' }, { createdAt: 'desc' }],
       })
     }
 
@@ -110,17 +107,29 @@ export class SkillResourcesService {
   }
 
   /**
-   * Lấy danh sách tài nguyên đã được phân loại (Grouped) chuyên nghiệp cho UI Frontend.
+   * Lấy danh sách tài nguyên đã được phân loại (Grouped) chuyên nghiệp cho UI Frontend + External Links.
    */
   async getResourcesBySkillGrouped(skillId: string) {
+    const skill = await this.prisma.skill.findUnique({
+      where: { id: skillId },
+    })
+
+    if (!skill) {
+      throw new NotFoundException('Kỹ năng không tồn tại trong hệ thống')
+    }
+
     const resources = await this.getResourcesBySkill(skillId)
 
     const videos = resources.filter((r) => r.resourceType === 'VIDEO_COURSE')
     const documentations = resources.filter((r) => ['DOCUMENTATION', 'ARTICLE', 'BOOK'].includes(r.resourceType || ''))
     const practices = resources.filter((r) => ['INTERACTIVE_LAB', 'PRACTICE'].includes(r.resourceType || ''))
 
+    const searchKeyword = encodeURIComponent(skill.name)
+    const formattedSkill = skill.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
     return {
       skillId,
+      skillName: skill.name,
       summary: {
         total: resources.length,
         hasVideo: videos.length > 0,
@@ -132,11 +141,119 @@ export class SkillResourcesService {
         documentations,
         practices,
       },
+      // Liên kết tìm kiếm bổ sung ra các nền tảng mở rộng
+      externalSearchLinks: {
+        youtube: `https://www.youtube.com/results?search_query=${searchKeyword}+tutorial+course`,
+        github: `https://github.com/topics/${formattedSkill}`,
+        devTo: `https://dev.to/t/${formattedSkill}`,
+        coursera: `https://www.coursera.org/search?query=${searchKeyword}`,
+        udemy: `https://www.udemy.com/courses/search/?q=${searchKeyword}`,
+      },
     }
   }
 
   /**
-   * Helper giải mã HTML entities từ Third-Party API (ví dụ: &#39; -> ', &amp; -> &)
+   * Cào thêm tài nguyên học tập ở các trang tiếp theo (Page 2, 3...) và nạp thêm vào DB.
+   */
+  async fetchMoreResources(skillId: string, page: number = 2) {
+    const skill = await this.prisma.skill.findUnique({
+      where: { id: skillId },
+    })
+
+    if (!skill) {
+      throw new NotFoundException('Kỹ năng không tồn tại trong hệ thống')
+    }
+
+    // 1. Lấy danh sách URL đã có trong DB của skill này để chủ động chống trùng lặp
+    const existingResources = await this.prisma.skillResource.findMany({
+      where: { skillId },
+      select: { url: true },
+    })
+    const existingUrls = new Set(existingResources.map((r) => r.url))
+
+    const newResources: Prisma.SkillResourceCreateManyInput[] = []
+    const formattedSkill = skill.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+    // 2. Fetch thêm từ Dev.to theo trang (page)
+    try {
+      const devToUrl = `https://dev.to/api/articles?tag=${formattedSkill}&page=${page}&per_page=4`
+      const devToResponse = await firstValueFrom(this.httpService.get<DevToArticle[]>(devToUrl))
+
+      if (Array.isArray(devToResponse.data)) {
+        devToResponse.data.forEach((article) => {
+          if (article.url && !existingUrls.has(article.url)) {
+            newResources.push({
+              skillId,
+              resourceType: 'ARTICLE',
+              title: article.title || `Bài viết hướng dẫn ${skill.name}`,
+              url: article.url,
+              cost: 0,
+              rating: 4.7,
+              durationHours: Math.ceil((article.reading_time_minutes || 5) / 60),
+            })
+            existingUrls.add(article.url) // Đánh dấu đã thêm vào bộ nhớ tạm
+          }
+        })
+      }
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : 'Unknown error'
+      this.logger.warn(`Không thể fetch thêm từ Dev.to (Trang ${page}): ${errMessage}`)
+    }
+
+    // 3. Fetch thêm từ YouTube API
+    const apiKey = process.env.YOUTUBE_API_KEY
+    if (apiKey) {
+      const searchQuery = `advanced ${skill.name} project tutorial`
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get<YouTubeSearchResponse>('https://www.googleapis.com/youtube/v3/search', {
+            params: {
+              part: 'snippet',
+              q: searchQuery,
+              type: 'video',
+              maxResults: 3,
+              key: apiKey,
+            },
+          }),
+        )
+
+        const items = response.data.items || []
+        items.forEach((item) => {
+          if (item.id?.videoId && item.snippet?.title) {
+            const videoUrl = `https://www.youtube.com/watch?v=${item.id.videoId}`
+            if (!existingUrls.has(videoUrl)) {
+              newResources.push({
+                skillId,
+                resourceType: 'VIDEO_COURSE',
+                title: this.decodeHtmlEntities(item.snippet.title),
+                url: videoUrl,
+                cost: 0,
+                rating: 4.8,
+                durationHours: 3,
+              })
+              existingUrls.add(videoUrl)
+            }
+          }
+        })
+      } catch (error) {
+        this.logger.error('Lỗi khi fetch thêm từ YouTube API:', error)
+      }
+    }
+
+    // 4. Lưu toàn bộ tài nguyên mới vừa cào được vào DB
+    if (newResources.length > 0) {
+      await this.prisma.skillResource.createMany({
+        data: newResources,
+        skipDuplicates: true, // Chống ghi trùng cấp DB nếu schema có @unique trên URL
+      })
+    }
+
+    // 5. Trả lại response grouped đã cập nhật thêm dữ liệu mới
+    return this.getResourcesBySkillGrouped(skillId)
+  }
+
+  /**
+   * Helper giải mã HTML entities từ Third-Party API
    */
   private decodeHtmlEntities(str: string): string {
     return str
@@ -148,13 +265,13 @@ export class SkillResourcesService {
   }
 
   /**
-   * Phương thức private tự động cào đa nguồn tài nguyên học tập (Multi-Source Crawling)
+   * Cào lần đầu đa nguồn tài nguyên học tập (Multi-Source Crawling)
    */
   private async fetchAndSaveMultiSourceResources(skillId: string, skillName: string): Promise<void> {
     const resourcesToCreate: Prisma.SkillResourceCreateManyInput[] = []
     const formattedSkill = skillName.toLowerCase().replace(/[^a-z0-9]/g, '')
 
-    // --- A. NGUỒN DOCS & CHEATSHEET CHÍNH THỨC (DevDocs) ---
+    // A. DevDocs
     resourcesToCreate.push({
       skillId,
       resourceType: 'DOCUMENTATION',
@@ -165,7 +282,7 @@ export class SkillResourcesService {
       durationHours: 1,
     })
 
-    // --- B. NGUỒN BÀI VIẾT CHUYÊN SÂU (Dev.to API - Không cần API Key) ---
+    // B. Dev.to
     try {
       const devToUrl = `https://dev.to/api/articles?tag=${formattedSkill}&per_page=2`
       const devToResponse = await firstValueFrom(this.httpService.get<DevToArticle[]>(devToUrl))
@@ -188,7 +305,7 @@ export class SkillResourcesService {
       this.logger.warn(`Không thể fetch bài viết từ Dev.to cho skill: ${skillName}. Error: ${errMessage}`)
     }
 
-    // --- C. NGUỒN BÀI TẬP THỰC HÀNH / LABS (GitHub Topics) ---
+    // C. GitHub Topics
     resourcesToCreate.push({
       skillId,
       resourceType: 'INTERACTIVE_LAB',
@@ -199,7 +316,7 @@ export class SkillResourcesService {
       durationHours: 3,
     })
 
-    // --- D. NGUỒN VIDEO BÀI GIẢNG (YouTube Data API v3) ---
+    // D. YouTube Data API v3
     const apiKey = process.env.YOUTUBE_API_KEY
 
     if (apiKey) {
@@ -246,10 +363,10 @@ export class SkillResourcesService {
       this.logger.warn('YOUTUBE_API_KEY chưa được cấu hình trong process.env')
     }
 
-    // Lưu toàn bộ tài nguyên đa nguồn vào Database
     if (resourcesToCreate.length > 0) {
       await this.prisma.skillResource.createMany({
         data: resourcesToCreate,
+        skipDuplicates: true,
       })
     }
   }
@@ -299,10 +416,8 @@ export class SkillResourcesService {
    * [ADMIN] Cập nhật thông tin tài nguyên học tập
    */
   async updateResource(id: string, dto: UpdateSkillResourceDto) {
-    // 1. Kiểm tra tài nguyên có tồn tại không
     await this.getResourceById(id)
 
-    // 2. Nếu DTO có chứa skillId mới -> Kiểm tra skillId đó có tồn tại không
     if (dto.skillId) {
       const skillExists = await this.prisma.skill.findUnique({
         where: { id: dto.skillId },
@@ -313,7 +428,6 @@ export class SkillResourcesService {
       }
     }
 
-    // 3. Tiến hành cập nhật thông tin (Cast kiểu UncheckedUpdateInput để tránh lỗi TypeScript)
     return await this.prisma.skillResource.update({
       where: { id },
       data: dto as Prisma.SkillResourceUncheckedUpdateInput,

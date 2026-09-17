@@ -11,6 +11,7 @@ import {
   UseGuards,
   Req,
   BadRequestException,
+  ParseIntPipe,
 } from '@nestjs/common'
 import { SkillResourcesService } from './skill-resources.service'
 import { CreateSkillResourceDto } from './dto/skill-resource.dto'
@@ -61,12 +62,34 @@ export class SkillResourcesController {
   @Get('skills/:skillId/resources/grouped')
   @ApiOperation({
     summary: 'Lấy tài nguyên phân loại theo nhóm (UI Frontend)',
-    description: 'Gom nhóm tài nguyên thành: videos, documentations, practices.',
+    description: 'Gom nhóm tài nguyên thành: videos, documentations, practices và cung cấp externalSearchLinks.',
   })
   @ApiParam({ name: 'skillId', description: 'UUID của kỹ năng', example: '123e4567-e89b-12d3-a456-426614174000' })
-  @ApiResponse({ status: 200, description: 'Trả về object gồm summary và data phân nhóm.' })
+  @ApiResponse({ status: 200, description: 'Trả về object gồm summary, data phân nhóm và link mở rộng.' })
   async getResourcesBySkillGrouped(@Param('skillId') skillId: string) {
     return this.skillResourcesService.getResourcesBySkillGrouped(skillId)
+  }
+
+  @Post('skills/:skillId/resources/fetch-more')
+  @ApiOperation({
+    summary: 'Cào thêm tài nguyên học tập mới vào Database',
+    description:
+      'Gọi Third-Party API để cào thêm trang bài học tiếp theo, lưu thẳng vào DB và trả về danh sách đã được bổ sung.',
+  })
+  @ApiParam({ name: 'skillId', description: 'UUID của kỹ năng', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Trang cần cào thêm (Mặc định: 2)',
+    example: 2,
+  })
+  @ApiResponse({ status: 200, description: 'Đã cào và lưu tài nguyên mới vào DB thành công.' })
+  async fetchMoreResources(
+    @Param('skillId') skillId: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+  ) {
+    return this.skillResourcesService.fetchMoreResources(skillId, page || 2)
   }
 
   // --- STUDENT PROTECTED ENDPOINTS ---
