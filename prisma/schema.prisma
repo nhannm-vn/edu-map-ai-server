@@ -267,7 +267,7 @@ model SkillResource {
   affiliateId   String?      @db.Uuid
   resourceType  ResourceType @default(VIDEO_COURSE) // Update ở đây
   title         String
-  url           String
+  url           String       @unique // Thêm @unique ở đây
   cost          Float        @default(0)
   rating        Float?
   durationHours Int?
