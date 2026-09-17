@@ -1,3 +1,4 @@
+import { AiAdvisorModule } from './modules/ai-advisor/ai-advisor.module'
 import { GithubModule } from './modules/github/github.module'
 import { SkillResourcesModule } from './modules/skill-resource/skill-resources.module'
 import { SkillTreesModule } from './modules/skill-trees/skill-trees.module'
@@ -11,6 +12,7 @@ import { UsersModule } from './modules/users/users.module'
 
 @Module({
   imports: [
+    AiAdvisorModule,
     GithubModule,
     SkillResourcesModule,
     SkillTreesModule,

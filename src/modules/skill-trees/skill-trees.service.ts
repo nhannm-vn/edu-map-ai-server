@@ -16,6 +16,21 @@ import { ResetMyTreeDto } from './dto/reset-my-tree.dto'
 export class SkillTreesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private nestNodes<T extends { id: string; parentNodeId: string | null }>(nodes: T[]) {
+    const byId = new Map(nodes.map((node) => [node.id, { ...node, children: [] as T[] }]))
+    const roots: Array<T & { children: T[] }> = []
+
+    for (const node of byId.values()) {
+      if (node.parentNodeId && byId.has(node.parentNodeId)) {
+        byId.get(node.parentNodeId)?.children.push(node)
+      } else {
+        roots.push(node)
+      }
+    }
+
+    return roots
+  }
+
   /**
    * [STUDENT] Lấy Cây Kỹ Năng cá nhân của User đang đăng nhập
    */
@@ -50,7 +65,7 @@ export class SkillTreesService {
       completedCount,
       totalNodes,
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-      nodes: tree.nodes as any, // Cast type nhẹ để khớp hoàn toàn với interface trả về
+      nodes: this.nestNodes(tree.nodes) as any,
     }
   }
 
@@ -90,7 +105,7 @@ export class SkillTreesService {
 
   // Lấy danh sách tất cả Cây Kỹ Năng
   async getAllTrees(): Promise<SkillTreeWithNodes[]> {
-    return this.prisma.skillTree.findMany({
+    const trees = await this.prisma.skillTree.findMany({
       include: {
         nodes: {
           include: { skill: true },
@@ -98,6 +113,7 @@ export class SkillTreesService {
         },
       },
     })
+    return trees.map((tree) => ({ ...tree, nodes: this.nestNodes(tree.nodes) as any }))
   }
 
   // Lấy chi tiết 1 Cây Kỹ Năng theo ID
@@ -116,7 +132,7 @@ export class SkillTreesService {
       throw new NotFoundException('Cây kỹ năng không tồn tại')
     }
 
-    return tree
+    return { ...tree, nodes: this.nestNodes(tree.nodes) as any }
   }
 
   // [ADMIN/SYSTEM] Tạo mới Cây Kỹ Năng
@@ -158,6 +174,7 @@ export class SkillTreesService {
       data: {
         skillTreeId,
         skillId: dto.skillId,
+        parentNodeId: dto.parentNodeId,
         nodeLevel: dto.nodeLevel,
         priorityRank: dto.priorityRank,
       },
@@ -222,7 +239,7 @@ export class SkillTreesService {
       completionPercentage: progressPercent,
       completedCount,
       totalNodes,
-      nodes: tree.nodes,
+      nodes: this.nestNodes(tree.nodes) as any,
     }
   }
 

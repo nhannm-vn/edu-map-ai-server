@@ -96,6 +96,7 @@ model SkillTreeNode {
   id           String    @id @default(uuid()) @db.Uuid
   skillTreeId  String    @db.Uuid
   skillId      String    @db.Uuid
+  parentNodeId String?   @db.Uuid
   nodeLevel    Int
   isVisible    Boolean   @default(true)
   isCompleted  Boolean   @default(false)
@@ -105,9 +106,12 @@ model SkillTreeNode {
 
   skillTree SkillTree @relation(fields: [skillTreeId], references: [id], onDelete: Cascade)
   skill     Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  parentNode SkillTreeNode?  @relation("NodeHierarchy", fields: [parentNodeId], references: [id], onDelete: Cascade)
+  children   SkillTreeNode[] @relation("NodeHierarchy")
 
   @@unique([skillTreeId, skillId])
   @@index([skillTreeId])
+  @@index([parentNodeId])
   @@index([priorityRank])
   @@map("skillTreeNodes")
 }

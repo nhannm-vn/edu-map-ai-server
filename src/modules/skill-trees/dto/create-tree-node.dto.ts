@@ -7,6 +7,11 @@ export class CreateTreeNodeDto {
   @IsNotEmpty()
   skillId!: string
 
+  @ApiPropertyOptional({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', description: 'Node cha trong cùng cây' })
+  @IsUUID()
+  @IsOptional()
+  parentNodeId?: string
+
   @ApiProperty({ example: 1, description: 'Cấp độ của node trong cây' })
   @IsInt()
   @Min(1)
