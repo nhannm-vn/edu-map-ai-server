@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { ResourceType } from '@prisma/client'
 import { IsNotEmpty, IsString, IsUrl, IsOptional, IsNumber, Min, Max, IsEnum } from 'class-validator'

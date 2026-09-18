@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { SkillTree, SkillTreeNode } from '@prisma/client'
@@ -132,7 +129,7 @@ export class SkillTreesService {
       throw new NotFoundException('Cây kỹ năng không tồn tại')
     }
 
-    return { ...tree, nodes: this.nestNodes(tree.nodes) as any }
+    return { ...tree, nodes: this.nestNodes(tree.nodes) }
   }
 
   // [ADMIN/SYSTEM] Tạo mới Cây Kỹ Năng
@@ -239,7 +236,7 @@ export class SkillTreesService {
       completionPercentage: progressPercent,
       completedCount,
       totalNodes,
-      nodes: this.nestNodes(tree.nodes) as any,
+      nodes: this.nestNodes(tree.nodes),
     }
   }
 
