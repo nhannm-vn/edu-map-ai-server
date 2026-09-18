@@ -3,6 +3,7 @@ import { GithubModule } from './modules/github/github.module'
 import { SkillResourcesModule } from './modules/skill-resource/skill-resources.module'
 import { SkillTreesModule } from './modules/skill-trees/skill-trees.module'
 import { SkillsModule } from './modules/skills/skills.module'
+import { ChatModule } from './modules/chat/chat.module'
 import { Module } from '@nestjs/common'
 import { AuthModule } from './modules/auth/auth.module'
 import { PrismaModule } from 'prisma/prisma.module'
@@ -16,7 +17,8 @@ import { UsersModule } from './modules/users/users.module'
     GithubModule,
     SkillResourcesModule,
     SkillTreesModule,
-    SkillsModule, //
+    SkillsModule,
+    ChatModule,
     PrismaModule,
     AuthModule,
     UsersModule,
