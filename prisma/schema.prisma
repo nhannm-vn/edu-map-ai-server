@@ -11,6 +11,12 @@ enum Role {
   ADMIN
 }
 
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
 model User {
   id                  String    @id @default(uuid()) @db.Uuid
   email               String    @unique
@@ -34,6 +40,7 @@ model User {
   aiAnalyses         AiAnalysis[]
   recommendations    Recommendation[]
   resourceHistories  ResourceHistory[]
+  chatSessions       ChatSession[]
 
   @@index([email])
   @@index([githubUsername])
@@ -84,8 +91,9 @@ model SkillTree {
   lastAnalyzedAt       DateTime?
   createdAt            DateTime  @default(now())
 
-  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  nodes SkillTreeNode[]
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodes       SkillTreeNode[]
+  chatSessions ChatSession[]
 
   @@index([userId])
   @@index([completionPercentage])
@@ -197,12 +205,49 @@ model AiAnalysis {
   tokensUsed         Int?
   createdAt          DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatSessions ChatSession[]
 
   @@index([userId])
   @@index([analysisType])
   @@index([createdAt])
   @@map("aiAnalyses")
+}
+
+model ChatSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @db.Uuid
+  skillTreeId   String?   @db.Uuid
+  analysisId    String?   @db.Uuid
+  title         String?
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillTree SkillTree?    @relation(fields: [skillTreeId], references: [id], onDelete: SetNull)
+  analysis  AiAnalysis?   @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+  messages  ChatMessage[]
+
+  @@index([userId])
+  @@index([skillTreeId])
+  @@index([analysisId])
+  @@map("chatSessions")
+}
+
+model ChatMessage {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @db.Uuid
+  role      ChatRole
+  content   String    @db.Text
+  modelUsed String?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("chatMessages")
 }
 
 model Recommendation {
